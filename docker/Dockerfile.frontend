@@ -1,0 +1,36 @@
+FROM node:18-alpine as build
+
+WORKDIR /app
+
+# 复制package.json
+COPY frontend/package.json ./
+
+# 安装依赖（跳过可选依赖以加速构建）
+RUN npm install --omit=dev --no-optional
+
+# 复制源代码
+COPY frontend/ .
+
+# 设置环境变量以避免构建时的警告和错误
+ENV CI=true
+ENV GENERATE_SOURCEMAP=false
+ENV ESLINT_NO_DEV_ERRORS=true
+ENV TSC_COMPILE_ON_ERROR=true
+
+# 构建应用
+RUN npm run build
+
+# 生产阶段
+FROM nginx:alpine
+
+# 复制构建结果
+COPY --from=build /app/build /usr/share/nginx/html
+
+# 复制nginx配置
+COPY docker/nginx.conf /etc/nginx/nginx.conf
+
+# 暴露端口
+EXPOSE 80
+
+# 启动nginx
+CMD ["nginx", "-g", "daemon off;"]

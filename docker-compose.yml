@@ -1,0 +1,91 @@
+# Docker Compose for Test Platform
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: test-platform-postgres
+    environment:
+      POSTGRES_DB: test_platform
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - test-platform
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    container_name: test-platform-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - test-platform
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: test-platform-backend
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/test_platform
+      REDIS_URL: redis://redis:6379
+      SECRET_KEY: your-secret-key-here
+      JWT_SECRET_KEY: your-jwt-secret-key
+      DEBUG: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - allure_results:/app/allure-results
+      - allure_reports:/app/allure-reports
+      - screenshots:/app/screenshots
+      - logs:/app/logs
+    networks:
+      - test-platform
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: test-platform-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - test-platform
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  allure_results:
+    driver: local
+  allure_reports:
+    driver: local
+  screenshots:
+    driver: local
+  logs:
+    driver: local
+
+networks:
+  test-platform:
+    driver: bridge
